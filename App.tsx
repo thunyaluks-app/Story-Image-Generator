@@ -1,5 +1,4 @@
-
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { Editor } from './components/Editor';
 
@@ -28,14 +27,38 @@ const STYLE_DETAILS: Record<string, string> = {
 };
 
 const IMAGE_MODELS = [
+  { id: 'gemini-3.1-flash-image-preview', name: 'Gemini 3.1 Flash Image (High Quality)' },
+  { id: 'gemini-3-pro-image-preview', name: 'Gemini 3.0 Pro Image (Premium)' },
   { id: 'gemini-2.5-flash-image', name: 'Gemini 2.5 Flash Image (Standard)' },
-  { id: 'gemini-3-pro-image-preview', name: 'Gemini 3 Pro Image (Premium - 1K)' },
-  { id: 'imagen-4.0-generate-001', name: 'Imagen 4.0 (High Quality)' }
+  { id: 'imagen-4.0-generate-001', name: 'Imagen 4.0' },
+  { id: 'gemini-flash-image-latest', name: 'Gemini Flash Image Latest' },
+  { id: 'gemini-pro-image-latest', name: 'Gemini Pro Image Latest' },
+  { id: 'gemini-flash-latest', name: 'gemini-flash-latest' },
+  { id: 'gemini-flash-lite-latest', name: 'gemini-flash-lite-latest' },
+  { id: 'gemini-3-flash-preview', name: 'gemini-3-flash-preview' },
+  { id: 'gemini-3.1-pro-preview', name: 'gemini-3.1-pro-preview' },
+];
+
+const TEXT_REASONING_MODELS = [
+    { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview' },
+    { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview' },
+    { id: 'gemini-3-pro-preview', name: 'Gemini 3.0 Pro Preview' },
+    { id: 'gemini-3.1-flash-lite-preview', name: 'Gemini 3.1 Flash Lite Preview' },
+    { id: 'gemini-flash-latest', name: 'Gemini Flash Latest' },
+    { id: 'gemini-flash-lite-latest', name: 'Gemini Flash Lite Latest' },
+    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+    { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+    { id: 'gemini-pro-latest', name: 'Gemini Pro (Latest Stable)' },
 ];
 
 const ASPECT_RATIOS = ["1:1", "3:4", "4:3", "9:16", "16:9"];
 
 const App: React.FC = () => {
+  // --- API Key States ---
+  const [apiKey, setApiKey] = useState<string>('');
+  const [apiKeyInput, setApiKeyInput] = useState<string>('');
+
+  // --- App States ---
   const [story, setStory] = useState<string>('');
   const [modifiedStory, setModifiedStory] = useState<string>('');
   const [imageStyle, setImageStyle] = useState<string>(IMAGE_STYLES[0]);
@@ -47,6 +70,7 @@ const App: React.FC = () => {
   const [videoPrompt, setVideoPrompt] = useState<string>('');
   
   const [selectedModel, setSelectedModel] = useState<string>(IMAGE_MODELS[0].id);
+  const [selectedTextModel, setSelectedTextModel] = useState<string>(TEXT_REASONING_MODELS[0].id);
   const [selectedAspectRatio, setSelectedAspectRatio] = useState<string>("16:9");
   
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
@@ -58,11 +82,61 @@ const App: React.FC = () => {
   const [isCreatingFirstFrameImage, setIsCreatingFirstFrameImage] = useState<boolean>(false);
   const [isCreatingVideoPrompt, setIsCreatingVideoPrompt] = useState<boolean>(false);
 
+  // --- API Key Handlers ---
+  useEffect(() => {
+    // Check localStorage on component mount (avoids hydration errors in SSR/Vercel)
+    const storedKey = localStorage.getItem('google_ai_api_key');
+    if (storedKey) {
+      setApiKey(storedKey);
+      setApiKeyInput(storedKey);
+    } else {
+      setApiKeyInput('no API key');
+    }
+  }, []);
+
+  const handleSaveApiKey = useCallback(() => {
+    const keyToSave = apiKeyInput.trim();
+    if (!keyToSave || keyToSave === 'no API key') {
+      alert('Please enter a valid API key before sending.');
+      return;
+    }
+    localStorage.setItem('google_ai_api_key', keyToSave);
+    setApiKey(keyToSave);
+    alert('API Key saved to browser storage!');
+  }, [apiKeyInput]);
+
+  const handleCopyApiKey = useCallback(() => {
+    const keyToCopy = apiKeyInput === 'no API key' ? '' : apiKeyInput;
+    if (!keyToCopy) {
+      alert('No API Key to copy.');
+      return;
+    }
+    navigator.clipboard.writeText(keyToCopy).then(() => alert('API Key copied to clipboard!'));
+  }, [apiKeyInput]);
+
+  const handleClearApiKey = useCallback(() => {
+    localStorage.removeItem('google_ai_api_key');
+    setApiKey('');
+    setApiKeyInput(''); // ลบให้กลายเป็นช่องว่างตามที่ต้องการ
+  }, []);
+
+  const handleFocusApiKey = useCallback(() => {
+    // หากผู้ใช้คลิกช่องตอนที่เป็น 'no API key' ให้เคลียร์เป็นช่องว่างเพื่อให้พิมพ์ง่ายขึ้น
+    if (apiKeyInput === 'no API key') {
+      setApiKeyInput('');
+    }
+  }, [apiKeyInput]);
+
+  // --- Feature Handlers ---
   const handlePostStory = useCallback(() => {
     setModifiedStory(story);
   }, [story]);
 
   const handleGenerateThaiConcept = useCallback(async () => {
+    if (!apiKey) {
+      alert('Please enter and Send your Google AI Studio API Key at the top first.');
+      return;
+    }
     if (!modifiedStory.trim()) {
       alert('Please provide a Modified Story first.');
       return;
@@ -70,7 +144,7 @@ const App: React.FC = () => {
 
     setIsGeneratingThai(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: apiKey });
       const styleInfo = imageStyle !== "None" ? `Style: ${imageStyle}. Details: ${STYLE_DETAILS[imageStyle] || ''}` : "Style: Automatic (Choose the most appropriate style for the story).";
       
       const systemInstruction = `คุณคือผู้เชี่ยวชาญด้านการสร้างภาพประกอบ (Image Concept Creator) ที่มีความรู้ความสามารถสูง 
@@ -88,7 +162,7 @@ const App: React.FC = () => {
 ส่งคำตอบกลับมาเป็นเฉพาะข้อความคำอธิบายแนวคิดภาพภาษาไทยเท่านั้น`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
+        model: selectedTextModel,
         contents: `Modified Story: ${modifiedStory}`,
         config: {
           systemInstruction: systemInstruction,
@@ -100,15 +174,19 @@ const App: React.FC = () => {
       if (result) {
         setImageConcept(result.trim());
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error generating Thai concept:', error);
-      alert('Failed to generate concept. Please try again.');
+      alert(`Failed to generate concept. Please check your API key and try again. Error: ${error?.message || 'Unknown error'}`);
     } finally {
       setIsGeneratingThai(false);
     }
-  }, [modifiedStory, imageStyle]);
+  }, [modifiedStory, imageStyle, apiKey, selectedTextModel]);
 
   const handleGenerateEnglishConcept = useCallback(async () => {
+    if (!apiKey) {
+      alert('Please enter and Send your Google AI Studio API Key at the top first.');
+      return;
+    }
     if (!imageConcept.trim()) {
       alert('Please generate or enter an Image Concept in Thai first.');
       return;
@@ -116,7 +194,7 @@ const App: React.FC = () => {
 
     setIsTranslating(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: apiKey });
       const styleInfo = imageStyle !== "None" ? `The intended style is: ${imageStyle}.` : "";
 
       const systemInstruction = `You are a world-class AI Image Prompt Engineer and expert translator. 
@@ -132,7 +210,7 @@ Guidelines:
 Provide ONLY the translated and refined English prompt as your output.`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
+        model: selectedTextModel,
         contents: `Thai Image Concept: ${imageConcept}`,
         config: {
           systemInstruction: systemInstruction,
@@ -144,61 +222,95 @@ Provide ONLY the translated and refined English prompt as your output.`;
       if (result) {
         setImageConceptEnglish(result.trim());
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error translating to English:', error);
-      alert('Failed to translate concept. Please try again.');
+      alert(`Failed to translate concept. Please try again. Error: ${error?.message || 'Unknown error'}`);
     } finally {
       setIsTranslating(false);
     }
-  }, [imageConcept, imageStyle]);
+  }, [imageConcept, imageStyle, apiKey, selectedTextModel]);
 
-  const generateUniversalImage = async (prompt: string, style: string, model: string, ratio: string) => {
-    if (model === 'gemini-3-pro-image-preview' || model === 'imagen-4.0-generate-001') {
-      const hasKey = await (window as any).aistudio.hasSelectedApiKey();
-      if (!hasKey) {
+  const generateUniversalImage = async (prompt: string, style: string, model: string, ratio: string, currentApiKey: string) => {
+    if (model.includes('pro-image') || model.includes('imagen') || model.includes('3.1-flash-image')) {
+      const hasKey = await (window as any).aistudio?.hasSelectedApiKey?.();
+      // Only trigger if aistudio logic exists in your environment, otherwise we rely on our provided API Key
+      if (hasKey === false) {
         alert('Please select a paid API key for this model generation.');
-        await (window as any).aistudio.openSelectKey();
+        await (window as any).aistudio?.openSelectKey?.();
       }
     }
 
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: currentApiKey });
     const fullPrompt = `${prompt}${style !== "None" ? `, ${STYLE_DETAILS[style] || style}` : ""}`;
 
-    if (model === 'imagen-4.0-generate-001') {
-      const response = await ai.models.generateImages({
-        model: model,
-        prompt: fullPrompt,
-        config: {
-          numberOfImages: 1,
-          outputMimeType: 'image/png',
-          aspectRatio: ratio as any,
-        },
-      });
-      return `data:image/png;base64,${response.generatedImages[0].image.imageBytes}`;
-    } else {
-      const response = await ai.models.generateContent({
-        model: model,
-        contents: {
-          parts: [{ text: fullPrompt }],
-        },
-        config: {
-          imageConfig: {
+    if (model.includes('imagen')) {
+      try {
+        const response = await ai.models.generateImages({
+          model: model,
+          prompt: fullPrompt,
+          config: {
+            numberOfImages: 1,
+            outputMimeType: 'image/png',
             aspectRatio: ratio as any,
-            ...(model === 'gemini-3-pro-image-preview' ? { imageSize: "1K" } : {})
           },
-        },
-      });
+        });
+        return `data:image/png;base64,${response.generatedImages[0].image.imageBytes}`;
+      } catch (error: any) {
+        console.warn("Error with aspectRatio in generateImages, retrying without it:", error);
+        const fallbackResponse = await ai.models.generateImages({
+          model: model,
+          prompt: fullPrompt,
+          config: {
+            numberOfImages: 1,
+            outputMimeType: 'image/png',
+          },
+        });
+        return `data:image/png;base64,${fallbackResponse.generatedImages[0].image.imageBytes}`;
+      }
+    } else {
+      try {
+        const response = await ai.models.generateContent({
+          model: model,
+          contents: {
+            parts: [{ text: fullPrompt }],
+          },
+          config: {
+            imageConfig: {
+              aspectRatio: ratio as any,
+              ...(model.includes('pro-image') || model.includes('3.1-flash-image') ? { imageSize: "1K" } : {})
+            },
+          },
+        });
 
-      const imagePart = response.candidates?.[0]?.content?.parts.find(p => p.inlineData);
-      if (imagePart?.inlineData?.data) {
-        return `data:image/png;base64,${imagePart.inlineData.data}`;
-      } else {
-        throw new Error('No image data found in response');
+        const imagePart = response.candidates?.[0]?.content?.parts.find(p => p.inlineData);
+        if (imagePart?.inlineData?.data) {
+          return `data:image/png;base64,${imagePart.inlineData.data}`;
+        } else {
+          throw new Error('No image data found in response');
+        }
+      } catch (error: any) {
+        console.warn("Error with imageConfig, retrying without it:", error);
+        const fallbackResponse = await ai.models.generateContent({
+          model: model,
+          contents: {
+            parts: [{ text: fullPrompt }],
+          }
+        });
+        const imagePart = fallbackResponse.candidates?.[0]?.content?.parts.find(p => p.inlineData);
+        if (imagePart?.inlineData?.data) {
+          return `data:image/png;base64,${imagePart.inlineData.data}`;
+        } else {
+          throw new Error('No image data found in fallback response');
+        }
       }
     }
   };
 
   const handleCreateImage = useCallback(async () => {
+    if (!apiKey) {
+      alert('Please enter and Send your Google AI Studio API Key at the top first.');
+      return;
+    }
     if (!imageConceptEnglish.trim()) {
       alert('Please provide an English Image Concept first.');
       return;
@@ -206,22 +318,25 @@ Provide ONLY the translated and refined English prompt as your output.`;
 
     setIsCreatingImage(true);
     try {
-      const url = await generateUniversalImage(imageConceptEnglish, imageStyle, selectedModel, selectedAspectRatio);
+      const url = await generateUniversalImage(imageConceptEnglish, imageStyle, selectedModel, selectedAspectRatio, apiKey);
       setGeneratedImageUrl(url);
     } catch (error: any) {
       console.error('Error creating image:', error);
       if (error.message?.includes("Requested entity was not found")) {
-        alert("The selected API key might not have access to this model. Please select a valid key.");
-        await (window as any).aistudio.openSelectKey();
+        alert("The API key might not have access to this model. Please use a valid key.");
       } else {
-        alert('Failed to create image. Please check your prompt and try again.');
+        alert('Failed to create image. Please check your prompt or API Key and try again.');
       }
     } finally {
       setIsCreatingImage(false);
     }
-  }, [imageConceptEnglish, imageStyle, selectedModel, selectedAspectRatio]);
+  }, [imageConceptEnglish, imageStyle, selectedModel, selectedAspectRatio, apiKey]);
 
   const handleCreateFirstFrameImage = useCallback(async () => {
+    if (!apiKey) {
+      alert('Please enter and Send your Google AI Studio API Key at the top first.');
+      return;
+    }
     if (!firstFramePrompt.trim()) {
       alert('Please generate or enter a First Frame Prompt first.');
       return;
@@ -229,22 +344,25 @@ Provide ONLY the translated and refined English prompt as your output.`;
 
     setIsCreatingFirstFrameImage(true);
     try {
-      const url = await generateUniversalImage(firstFramePrompt, imageStyle, selectedModel, selectedAspectRatio);
+      const url = await generateUniversalImage(firstFramePrompt, imageStyle, selectedModel, selectedAspectRatio, apiKey);
       setGeneratedFirstFrameUrl(url);
     } catch (error: any) {
       console.error('Error creating first frame image:', error);
       if (error.message?.includes("Requested entity was not found")) {
-        alert("The selected API key might not have access to this model. Please select a valid key.");
-        await (window as any).aistudio.openSelectKey();
+        alert("The API key might not have access to this model. Please use a valid key.");
       } else {
-        alert('Failed to create image. Please check your prompt and try again.');
+        alert('Failed to create image. Please check your prompt or API Key and try again.');
       }
     } finally {
       setIsCreatingFirstFrameImage(false);
     }
-  }, [firstFramePrompt, imageStyle, selectedModel, selectedAspectRatio]);
+  }, [firstFramePrompt, imageStyle, selectedModel, selectedAspectRatio, apiKey]);
 
   const handleCreateVideoPrompt = useCallback(async () => {
+    if (!apiKey) {
+      alert('Please enter and Send your Google AI Studio API Key at the top first.');
+      return;
+    }
     if (!imageConcept.trim()) {
       alert('Please generate an Image Concept in Thai first.');
       return;
@@ -252,7 +370,7 @@ Provide ONLY the translated and refined English prompt as your output.`;
 
     setIsCreatingVideoPrompt(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: apiKey });
       const maxLength = parseInt(maxPromptLength) || 800;
 
       const systemInstruction = `You are a world-class Prompt Engineer and visual storyteller. 
@@ -273,7 +391,7 @@ FORMAT YOUR RESPONSE AS JSON:
 }`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
+        model: selectedTextModel,
         contents: `Modified Story: ${modifiedStory}\nImage Concept in Thai: ${imageConcept}`,
         config: {
           systemInstruction: systemInstruction,
@@ -289,64 +407,99 @@ FORMAT YOUR RESPONSE AS JSON:
       if (result.videoPrompt) {
         setVideoPrompt(result.videoPrompt.trim());
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating video prompt:', error);
-      alert('Failed to create video prompt. Please try again.');
+      alert(`Failed to create video prompt. Please check your API key and try again. Error: ${error?.message || 'Unknown error'}`);
     } finally {
       setIsCreatingVideoPrompt(false);
     }
-  }, [imageConcept, modifiedStory, maxPromptLength]);
+  }, [imageConcept, modifiedStory, maxPromptLength, apiKey, selectedTextModel]);
 
+  // --- Copy & Clear Handlers ---
   const handleCopyStory = useCallback(() => {
     if (!story) return;
     navigator.clipboard.writeText(story).then(() => alert('Original story copied!'));
   }, [story]);
-
   const handleClearStory = useCallback(() => setStory(''), []);
 
   const handleCopyModified = useCallback(() => {
     if (!modifiedStory) return;
     navigator.clipboard.writeText(modifiedStory).then(() => alert('Modified story copied!'));
   }, [modifiedStory]);
-
   const handleClearModified = useCallback(() => setModifiedStory(''), []);
 
   const handleCopyConcept = useCallback(() => {
     if (!imageConcept) return;
     navigator.clipboard.writeText(imageConcept).then(() => alert('Image concept (Thai) copied!'));
   }, [imageConcept]);
-
   const handleClearConcept = useCallback(() => setImageConcept(''), []);
 
   const handleCopyConceptEnglish = useCallback(() => {
     if (!imageConceptEnglish) return;
     navigator.clipboard.writeText(imageConceptEnglish).then(() => alert('Image concept (English) copied!'));
   }, [imageConceptEnglish]);
-
   const handleClearConceptEnglish = useCallback(() => setImageConceptEnglish(''), []);
 
   const handleCopyFirstFrame = useCallback(() => {
     if (!firstFramePrompt) return;
     navigator.clipboard.writeText(firstFramePrompt).then(() => alert('First frame prompt copied!'));
   }, [firstFramePrompt]);
-
   const handleClearFirstFrame = useCallback(() => setFirstFramePrompt(''), []);
 
   const handleCopyVideoPrompt = useCallback(() => {
     if (!videoPrompt) return;
     navigator.clipboard.writeText(videoPrompt).then(() => alert('Video prompt copied!'));
   }, [videoPrompt]);
-
   const handleClearVideoPrompt = useCallback(() => setVideoPrompt(''), []);
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center p-4 md:p-8">
       <div className="w-full max-w-4xl space-y-8 pb-20">
+        
         <header className="text-center space-y-2">
           <h1 className="text-4xl font-bold text-slate-800 tracking-tight">Story Image Generator</h1>
           <p className="text-slate-500">Transform your words into visual art</p>
-          <p className="text-sm font-bold text-gray-500 mt-2 tracking-widest">thunyaluks-v.2</p>
         </header>
+
+        {/* --- API Key Section (New) --- */}
+        <section className="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 space-y-3">
+          <div className="flex flex-col space-y-1">
+            <label className="text-slate-700 font-bold text-lg tracking-tight">Google AI Studio API Key</label>
+            <p className="text-xs text-slate-500 mb-2">
+              Please enter your API Key. It will be stored securely in your browser's local storage.
+            </p>
+          </div>
+          <div className="flex flex-col md:flex-row gap-3">
+            <input
+              type="text"
+              value={apiKeyInput}
+              onChange={(e) => setApiKeyInput(e.target.value)}
+              onFocus={handleFocusApiKey}
+              className="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder="Paste your API Key here..."
+            />
+            <div className="flex gap-2">
+              <button 
+                onClick={handleSaveApiKey} 
+                className="px-5 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-sm active:scale-95"
+              >
+                Send
+              </button>
+              <button 
+                onClick={handleCopyApiKey} 
+                className="px-5 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-colors shadow-sm active:scale-95"
+              >
+                Copy
+              </button>
+              <button 
+                onClick={handleClearApiKey} 
+                className="px-5 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-colors shadow-sm active:scale-95"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        </section>
 
         <section>
           <Editor label="Story" value={story} onChange={setStory} onCopy={handleCopyStory} onClear={handleClearStory} onPost={handlePostStory} />
@@ -354,6 +507,18 @@ FORMAT YOUR RESPONSE AS JSON:
 
         <section>
           <Editor label="Modified Story" value={modifiedStory} onChange={setModifiedStory} onCopy={handleCopyModified} onClear={handleClearModified} />
+        </section>
+
+        <section className="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 space-y-6">
+          <div className="flex flex-col space-y-3">
+            <label className="text-slate-700 font-semibold uppercase tracking-wider text-xs">Text Reasoning Model</label>
+            <div className="relative">
+              <select value={selectedTextModel} onChange={(e) => setSelectedTextModel(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 appearance-none cursor-pointer">
+                {TEXT_REASONING_MODELS.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </div>
+            <p className="text-xs text-slate-500">Used for all text processing tasks (e.g., generating concepts, translating, creating prompts).</p>
+          </div>
         </section>
 
         <section className="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 space-y-6">
