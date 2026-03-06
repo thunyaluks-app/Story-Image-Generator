@@ -1,0 +1,5 @@
+{
+  "name": "Story Image Generator",
+  "description": "An aesthetic notepad-style application that allows users to write stories and generate beautiful AI-powered images based on their text using Gemini 2.5 Flash Image model.",
+  "requestFramePermissions": []
+}
