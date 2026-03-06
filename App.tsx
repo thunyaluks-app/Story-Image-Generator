@@ -345,7 +345,7 @@ FORMAT YOUR RESPONSE AS JSON:
         <header className="text-center space-y-2">
           <h1 className="text-4xl font-bold text-slate-800 tracking-tight">Story Image Generator</h1>
           <p className="text-slate-500">Transform your words into visual art</p>
-          <p className="text-sm font-bold text-gray-500 mt-2 tracking-widest">thunyaluks</p>
+          <p className="text-sm font-bold text-gray-500 mt-2 tracking-widest">thunyaluks-v.2</p>
         </header>
 
         <section>
